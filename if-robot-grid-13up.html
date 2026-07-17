@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>If Robot Grid · 13-Image Export</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:#c6a300;
+    --red:#e5383e;
+    --magenta:#a5346c;
+    --deep:#2b0d1e;
+    --well:#1f0a16;
+    --cream:#fdf6ea;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--deep);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:24px;
+    padding:32px 16px 64px;
+    font-family:'Nunito',sans-serif;
+  }
+  /* toolbar is page chrome only — it is NOT part of the exported PNG */
+  .toolbar{
+    display:flex;
+    gap:14px;
+    align-items:center;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+  button{
+    font-family:'Nunito',sans-serif;
+    font-weight:900;
+    font-size:.85rem;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--cream);
+    background:linear-gradient(135deg, var(--magenta), var(--red));
+    border:none;
+    border-radius:999px;
+    padding:14px 30px;
+    cursor:pointer;
+    box-shadow:0 8px 20px rgba(229,56,62,.35);
+    transition:transform .15s ease;
+  }
+  button:hover{transform:translateY(-2px);}
+  button:disabled{opacity:.45;cursor:wait;transform:none;}
+  .status{
+    color:var(--gold);
+    font-weight:800;
+    font-size:.75rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+  }
+  canvas{
+    max-width:100%;
+    height:auto;
+    border-radius:18px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button id="dl" disabled>Download PNG</button>
+  <span class="status" id="status">loading images…</span>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+/* ============================================================
+   CAREtech portrait grid export — gold / red / magenta palette
+   13 images in 4 rows:
+     row 1 — if_robot_01 · 02 · 03 · 04
+     row 2 — if_robot_05 · 06 · 07        (centered)
+     row 3 — if_robot_08 · 09 · 10        (centered)
+     row 4 — if_robot_11 · 12 · 13        (centered)
+   Images fill their frames (object-fit: cover — cropping OK).
+   No text on the composition.
+   Exports at full canvas resolution (print quality).
+   ============================================================ */
+
+const SOURCES = [
+  'images/if_robot_01.png',
+  'images/if_robot_02.png',
+  'images/if_robot_03.png',
+  'images/if_robot_04.png',
+  'images/if_robot_05.png',
+  'images/if_robot_06.png',
+  'images/if_robot_07.png',
+  'images/if_robot_08.png',
+  'images/if_robot_09.png',
+  'images/if_robot_10.png',
+  'images/if_robot_11.png',
+  'images/if_robot_12.png',
+  'images/if_robot_13.png'
+];
+
+/* how many frames sit in each row (top to bottom) — must sum to 13 */
+const ROW_COUNTS = [4, 3, 3, 3];
+
+/* ---- composition geometry (all values in export pixels) ---- */
+const FRAME_W = 1000, FRAME_H = 1500;    // tall portrait frames (2:3)
+const GAP    = 90;
+const PAD_X  = 140, PAD_Y = 150;
+const BORDER = 12;                        // frame stroke
+const RADIUS = 60;                        // outer frame corner radius
+const INNER_R = 40;                       // image corner radius
+const INSET  = 34;                        // gap between frame edge and image
+
+const MAX_COLS = Math.max(...ROW_COUNTS);
+const GRID_W = FRAME_W*MAX_COLS + GAP*(MAX_COLS-1);
+const ROWS = ROW_COUNTS.length;
+
+const W = PAD_X*2 + GRID_W;                              // canvas width
+const H = PAD_Y*2 + FRAME_H*ROWS + GAP*(ROWS-1);         // canvas height
+
+const canvas = document.getElementById('c');
+canvas.width = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+/* palette: c6a300 · e5383e · a5346c on a deep derived background */
+const COL = {
+  bg:'#2b0d1e', well:'#1f0a16', gold:'#c6a300',
+  red:'#e5383e', magenta:'#a5346c'
+};
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+/* draw image with object-fit: cover inside a rounded rect */
+function drawCover(img,x,y,w,h,r){
+  ctx.save();
+  roundRect(x,y,w,h,r);
+  ctx.clip();
+  const scale = Math.max(w/img.width, h/img.height);
+  const dw = img.width*scale, dh = img.height*scale;
+  ctx.drawImage(img, x+(w-dw)/2, y+(h-dh)/2, dw, dh);
+  ctx.restore();
+}
+
+function drawFrame(img,x,y,w,h,accent){
+  /* soft glow */
+  ctx.save();
+  ctx.shadowColor = accent.glow;
+  ctx.shadowBlur = 70;
+  ctx.shadowOffsetY = 24;
+  ctx.fillStyle = COL.well;
+  roundRect(x,y,w,h,RADIUS);
+  ctx.fill();
+  ctx.restore();
+
+  /* accent border — cycles gold / red / magenta */
+  ctx.strokeStyle = accent.stroke;
+  ctx.lineWidth = BORDER;
+  roundRect(x+BORDER/2, y+BORDER/2, w-BORDER, h-BORDER, RADIUS-BORDER/2);
+  ctx.stroke();
+
+  /* image — fills the frame, cropped as needed */
+  drawCover(img, x+INSET, y+INSET, w-INSET*2, h-INSET*2, INNER_R);
+}
+
+/* cycle of accent colors — gold, red, magenta */
+const ACCENTS = [
+  { stroke:'#c6a300', glow:'rgba(198,163,0,0.40)' },    // gold
+  { stroke:'#e5383e', glow:'rgba(229,56,62,0.40)' },    // red
+  { stroke:'#a5346c', glow:'rgba(165,52,108,0.45)' }    // magenta
+];
+
+function drawBackground(){
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0,0,W,H);
+
+  let g = ctx.createRadialGradient(W*0.08, H*0.06, 0, W*0.08, H*0.06, W*0.5);
+  g.addColorStop(0,'rgba(165,52,108,0.25)');    // magenta wash, top left
+  g.addColorStop(1,'rgba(165,52,108,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  g = ctx.createRadialGradient(W*0.94, H*0.94, 0, W*0.94, H*0.94, W*0.5);
+  g.addColorStop(0,'rgba(229,56,62,0.18)');     // red wash, bottom right
+  g.addColorStop(1,'rgba(229,56,62,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  g = ctx.createRadialGradient(W*0.55, H*0.02, 0, W*0.55, H*0.02, W*0.4);
+  g.addColorStop(0,'rgba(198,163,0,0.14)');     // gold wash, top center
+  g.addColorStop(1,'rgba(198,163,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+}
+
+function loadImage(src){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>resolve(img);
+    img.onerror = ()=>reject(new Error('could not load '+src));
+    img.src = src;
+  });
+}
+
+async function render(){
+  const status = document.getElementById('status');
+  const btn = document.getElementById('dl');
+  try{
+    const imgs = await Promise.all(SOURCES.map(loadImage));
+
+    drawBackground();
+
+    let idx = 0;
+    ROW_COUNTS.forEach((count, row)=>{
+      const rowW = FRAME_W*count + GAP*(count-1);
+      const startX = PAD_X + (GRID_W - rowW)/2;      // center shorter rows
+      const y = PAD_Y + row * (FRAME_H + GAP);
+      for(let col=0; col<count; col++){
+        const x = startX + col * (FRAME_W + GAP);
+        const accent = ACCENTS[idx % ACCENTS.length];
+        drawFrame(imgs[idx], x, y, FRAME_W, FRAME_H, accent);
+        idx++;
+      }
+    });
+
+    status.textContent = W + ' × ' + H + ' px · ready';
+    btn.disabled = false;
+  }catch(err){
+    status.textContent = err.message + ' — check the images folder';
+  }
+}
+
+document.getElementById('dl').addEventListener('click', ()=>{
+  const status = document.getElementById('status');
+  try{
+    /* toDataURL throws immediately if the canvas is tainted,
+       which gives us a catchable error (toBlob can fail silently) */
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'if-robot-grid.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    status.textContent = 'downloaded ♥';
+  }catch(err){
+    status.textContent = 'export blocked: open this page from a local server (e.g. python3 -m http.server) or GitHub Pages, not by double-clicking the file';
+    console.error(err);
+  }
+});
+
+render();
+</script>
+</body>
+</html>
